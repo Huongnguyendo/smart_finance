@@ -1,0 +1,35 @@
+# Frontend — not part of the Java Docker image (huge: node_modules)
+app/
+
+# Git and IDE
+.git
+.github
+.cursor
+.idea
+*.iml
+.vscode
+
+# Secrets (never bake into images)
+.env
+.env.*
+app/.env
+*.pem
+*.key
+
+# Maven outputs (fresh build in container)
+**/target/
+
+# Local uploads / dumps
+api-gateway/uploads/
+backup.sql
+*.sql.dump
+
+# Docs and misc
+*.md
+docs/
+
+# OS / logs
+.DS_Store
+Thumbs.db
+*.log
+logs/
