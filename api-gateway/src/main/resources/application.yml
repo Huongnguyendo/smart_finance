@@ -33,10 +33,10 @@ spring:
     properties:
       hibernate:
         format_sql: true
-  # Set RABBITMQ_ENABLED=false on hosts without a broker (e.g. Render) so the app
-  # can start and listen on PORT; enable when using docker-compose or CloudAMQP.
+  # Without a broker (e.g. Render): set RABBITMQ_ENABLED=false or SPRING_RABBITMQ_ENABLED=false.
+  # SmartWalletApplication also excludes Rabbit auto-config when those env vars are false.
   rabbitmq:
-    enabled: ${RABBITMQ_ENABLED:true}
+    enabled: ${RABBITMQ_ENABLED:${SPRING_RABBITMQ_ENABLED:true}}
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:guest}
