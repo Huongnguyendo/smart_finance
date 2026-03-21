@@ -1,0 +1,29 @@
+diff --git a/node_modules/@radix-ui/react-slot/dist/index.js b/node_modules/@radix-ui/react-slot/dist/index.js
+index 0000000..1111111 100644
+--- a/node_modules/@radix-ui/react-slot/dist/index.js
++++ b/node_modules/@radix-ui/react-slot/dist/index.js
+@@ -98,6 +98,13 @@ var Slottable = /* @__PURE__ */ createSlottable("Slottable");
+ function isSlottable(child) {
+   return React.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER;
+ }
++function flattenStyle(style) {
++  if (style == null) return undefined;
++  if (Array.isArray(style)) {
++    return Object.assign({}, ...style.filter(Boolean));
++  }
++  return style;
++}
+ function mergeProps(slotProps, childProps) {
+   const overrideProps = { ...childProps };
+   for (const propName in childProps) {
+@@ -114,7 +121,9 @@ function mergeProps(slotProps, childProps) {
+         overrideProps[propName] = slotPropValue;
+       }
+     } else if (propName === "style") {
+-      overrideProps[propName] = { ...slotPropValue, ...childPropValue };
++      const slotStyle = flattenStyle(slotPropValue);
++      const childStyle = flattenStyle(childPropValue);
++      overrideProps[propName] = Object.assign({}, slotStyle, childStyle);
+     } else if (propName === "className") {
+       overrideProps[propName] = [slotPropValue, childPropValue].filter(Boolean).join(" ");
+     }

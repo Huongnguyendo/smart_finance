@@ -1,0 +1,54 @@
+# Render Blueprint - deploy backend + frontend
+# https://render.com/docs/blueprint-spec
+#
+# 1. Push this repo to GitHub
+# 2. In Render: New > Blueprint > Connect repo
+# 3. Add env vars in Render dashboard (DB_*, SUPABASE_*, GROQ_API_KEY, HF_TOKEN)
+# 4. After backend deploys, add EXPO_PUBLIC_API_URL=https://smartwallet-api.onrender.com to frontend, then redeploy
+
+services:
+  # Backend (Java Spring Boot)
+  - type: web
+    name: smartwallet-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Strong JWT + fail-fast if secret is weak (see docs/PRODUCTION.md)
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Set in dashboard to your frontend URL(s), e.g. https://smartwallet-web.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: HF_TOKEN
+        sync: false
+      - key: STORAGE_PROVIDER
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: receipts
+
+  # Frontend (Expo web static)
+  - type: web
+    name: smartwallet-web
+    runtime: static
+    buildCommand: cd app && npm install && npx expo export --platform web
+    staticPublishPath: ./app/dist
+    envVars:
+      - key: EXPO_PUBLIC_API_URL
+        sync: false

@@ -1,0 +1,40 @@
+# Environment and secrets - NEVER commit these
+.env
+app/.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Database dumps (contain PII, password hashes, real data)
+backup.sql
+*.sql.dump
+
+# Local receipt uploads (dev only — may contain personal images)
+api-gateway/uploads/
+
+# Build outputs
+target/
+build/
+node_modules/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next

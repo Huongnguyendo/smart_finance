@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'smartwallet'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # host.docker.internal = host machine (Mac/Windows). On Linux use host network or your host IP.
+      - targets: ['host.docker.internal:8080']
+    scrape_interval: 10s
