@@ -1,3 +1,7 @@
+# Render (and similar) inject PORT; local dev defaults to 8080.
+server:
+  port: ${PORT:8080}
+
 smartwallet:
   receipts:
     storage-provider: ${STORAGE_PROVIDER:local}
