@@ -4,8 +4,8 @@ import java.net.URI;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Primary;
  * Otherwise Spring Boot auto-config uses host/port/username/password.
  */
 @Configuration
-@ConditionalOnProperty(name = "RABBITMQ_URI")
+@Conditional(RabbitUriEnabledCondition.class)
 public class RabbitConnectionConfig {
 
   @Value("${RABBITMQ_URI}")

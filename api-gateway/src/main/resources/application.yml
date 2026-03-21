@@ -1,6 +1,8 @@
 # Render (and similar) inject PORT; local dev defaults to 8080.
+# Bind all interfaces so the platform's port scan sees the listener.
 server:
   port: ${PORT:8080}
+  address: 0.0.0.0
 
 smartwallet:
   receipts:
@@ -31,7 +33,10 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  # Set RABBITMQ_ENABLED=false on hosts without a broker (e.g. Render) so the app
+  # can start and listen on PORT; enable when using docker-compose or CloudAMQP.
   rabbitmq:
+    enabled: ${RABBITMQ_ENABLED:true}
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:guest}
