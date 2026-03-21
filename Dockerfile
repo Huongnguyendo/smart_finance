@@ -14,14 +14,17 @@ COPY api-gateway/pom.xml api-gateway/
 RUN mvn dependency:go-offline -B -q || true
 
 COPY . .
-RUN mvn package -pl api-gateway -am -DskipTests -B -q
+# Build, then copy the Spring Boot *fat* JAR only (exclude *-plain.jar or glob picks wrong file).
+RUN mvn package -pl api-gateway -am -DskipTests -B -q && \
+    JAR_PATH=$(ls /app/api-gateway/target/*.jar | grep -v -- '-plain.jar$') && \
+    test -f "$JAR_PATH" && cp "$JAR_PATH" /app/app.jar
 
 # Runtime stage with Tesseract for receipt OCR
 FROM eclipse-temurin:21-jre-alpine
 RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
 
 WORKDIR /app
-COPY --from=builder /app/api-gateway/target/*.jar app.jar
+COPY --from=builder /app/app.jar app.jar
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

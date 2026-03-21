@@ -125,9 +125,18 @@
 
   <build>
     <plugins>
+      <!-- Repackage is required for an executable fat JAR (not inherited without spring-boot-starter-parent). -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring-boot.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
         <configuration>
           <skip>false</skip>
           <mainClass>com.smartwallet.SmartWalletApplication</mainClass>
