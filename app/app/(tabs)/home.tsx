@@ -10,6 +10,12 @@ import { VictoryArea, VictoryLine, VictoryPie, VictoryChart, VictoryAxis } from 
 import { apiAuth, apiAuthJson } from '../../src/lib/api';
 
 type BudgetAlert = { category: string; limit: number; spent: number; percent: number; status: string };
+type InsightCard = {
+  title: string;
+  label: string;
+  body: string;
+  tone: 'neutral' | 'positive' | 'warning' | 'danger';
+};
 
 type DashboardResponse = {
   spendingThisMonth: number;
@@ -18,6 +24,7 @@ type DashboardResponse = {
   recentTransactions: { description: string; amount: number; category: string | null }[];
   projectedNext30: number;
   quickInsight: string;
+  quickInsightCards?: InsightCard[];
   budgetAlerts: BudgetAlert[];
 };
 const CHART_COLORS = theme.colors.chartColors;
@@ -343,7 +350,21 @@ export default function Home() {
 
       <SectionCard>
         <Text style={styles.cardTitle}>Quick Insights</Text>
-        <Text style={styles.cardBody}>{dashboard?.quickInsight ?? 'Add transactions to get AI insights.'}</Text>
+        {dashboard?.quickInsightCards && dashboard.quickInsightCards.length > 0 ? (
+          <View style={styles.quickInsightGrid}>
+            {dashboard.quickInsightCards.map((card) => (
+              <View key={card.title} style={[styles.quickInsightCard, styles[`quickInsightCard_${card.tone}`]]}>
+                <Text style={styles.quickInsightTitle}>{card.title}</Text>
+                <Text style={[styles.quickInsightLabel, styles[`quickInsightLabel_${card.tone}`]]}>
+                  {card.label}
+                </Text>
+                <Text style={styles.quickInsightBody}>{card.body}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.cardBody}>{dashboard?.quickInsight ?? 'Add transactions to get AI insights.'}</Text>
+        )}
         <View style={styles.insightsActions}>
           <Pressable
             style={[styles.demoButton, demoLoading && styles.demoButtonDisabled]}
@@ -693,6 +714,56 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 12,
     flexWrap: 'wrap',
+  },
+  quickInsightGrid: {
+    gap: 10,
+  },
+  quickInsightCard: {
+    padding: 14,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.bgInput,
+    gap: 5,
+  },
+  quickInsightCard_neutral: {
+    borderColor: theme.colors.border,
+  },
+  quickInsightCard_positive: {
+    borderColor: 'rgba(52, 211, 153, 0.32)',
+  },
+  quickInsightCard_warning: {
+    borderColor: 'rgba(251, 191, 36, 0.36)',
+  },
+  quickInsightCard_danger: {
+    borderColor: 'rgba(248, 113, 113, 0.36)',
+  },
+  quickInsightTitle: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  quickInsightLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  quickInsightLabel_neutral: {
+    color: theme.colors.textMuted,
+  },
+  quickInsightLabel_positive: {
+    color: theme.colors.positive,
+  },
+  quickInsightLabel_warning: {
+    color: theme.colors.warning,
+  },
+  quickInsightLabel_danger: {
+    color: theme.colors.negative,
+  },
+  quickInsightBody: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   demoButton: {
     backgroundColor: theme.colors.accent,

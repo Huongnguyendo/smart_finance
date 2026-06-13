@@ -1,5 +1,11 @@
 package com.smartwallet.transactions.service;
 
+import com.azure.core.util.Context;
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import com.azure.storage.blob.models.BlobHttpHeaders;
+import com.azure.storage.blob.options.BlobParallelUploadOptions;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -30,6 +36,8 @@ public class ReceiptStorageService {
   private final String supabaseServiceRoleKey;
   private final String supabaseBucket;
   private final String supabasePrefix;
+  private final BlobContainerClient azureContainerClient;
+  private final String azurePrefix;
 
   public ReceiptStorageService(
       @Value("${smartwallet.receipts.storage-provider:local}") String storageProvider,
@@ -40,7 +48,10 @@ public class ReceiptStorageService {
       @Value("${smartwallet.receipts.supabase.url:}") String supabaseUrl,
       @Value("${smartwallet.receipts.supabase.service-role-key:}") String supabaseServiceRoleKey,
       @Value("${smartwallet.receipts.supabase.bucket:receipts}") String supabaseBucket,
-      @Value("${smartwallet.receipts.supabase.prefix:}") String supabasePrefix) {
+      @Value("${smartwallet.receipts.supabase.prefix:}") String supabasePrefix,
+      @Value("${smartwallet.receipts.azure.connection-string:}") String azureConnectionString,
+      @Value("${smartwallet.receipts.azure.container:receipts}") String azureContainer,
+      @Value("${smartwallet.receipts.azure.prefix:receipts/}") String azurePrefixRaw) {
     this.storageProvider = storageProvider != null ? storageProvider.strip().toLowerCase() : "local";
     this.uploadDir = Path.of(uploadDirPath).toAbsolutePath();
     this.s3Bucket = s3Bucket != null ? s3Bucket.strip() : "";
@@ -50,6 +61,9 @@ public class ReceiptStorageService {
     this.supabaseServiceRoleKey = supabaseServiceRoleKey != null ? supabaseServiceRoleKey.strip() : "";
     this.supabaseBucket = supabaseBucket != null ? supabaseBucket.strip() : "receipts";
     this.supabasePrefix = supabasePrefix != null ? supabasePrefix.strip() : "";
+    String azureConn = azureConnectionString != null ? azureConnectionString.strip() : "";
+    String azureCont = azureContainer != null ? azureContainer.strip() : "";
+    this.azurePrefix = normalizeBlobPrefix(azurePrefixRaw);
 
     if ("s3".equals(this.storageProvider) && this.s3Bucket.isEmpty()) {
       throw new IllegalStateException(
@@ -61,6 +75,12 @@ public class ReceiptStorageService {
             "STORAGE_PROVIDER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to be set");
       }
     }
+    if ("azure".equals(this.storageProvider)) {
+      if (azureConn.isEmpty() || azureCont.isEmpty()) {
+        throw new IllegalStateException(
+            "STORAGE_PROVIDER=azure requires AZURE_STORAGE_CONNECTION_STRING and AZURE_STORAGE_CONTAINER");
+      }
+    }
 
     S3Client client = null;
     if ("s3".equals(this.storageProvider)) {
@@ -69,6 +89,15 @@ public class ReceiptStorageService {
           .build();
     }
     this.s3Client = client;
+
+    if ("azure".equals(this.storageProvider)) {
+      this.azureContainerClient = new BlobServiceClientBuilder()
+          .connectionString(azureConn)
+          .buildClient()
+          .getBlobContainerClient(azureCont);
+    } else {
+      this.azureContainerClient = null;
+    }
 
     if ("local".equals(this.storageProvider)) {
       try {
@@ -84,6 +113,7 @@ public class ReceiptStorageService {
    * Saves the receipt image and returns the URL.
    * - Local: /api/transactions/receipts/{filename}
    * - S3: https://{bucket}.s3.{region}.amazonaws.com/{prefix}{filename}
+   * - Azure: blob public URL (container should allow blob-level anonymous read for app previews)
    * - Supabase: https://{ref}.supabase.co/storage/v1/object/public/{bucket}/{path}
    */
   public String store(MultipartFile file) throws IOException {
@@ -107,6 +137,10 @@ public class ReceiptStorageService {
 
     if ("supabase".equals(storageProvider)) {
       return storeSupabase(file, filename);
+    }
+
+    if ("azure".equals(storageProvider)) {
+      return storeAzure(file, filename);
     }
 
     Path target = uploadDir.resolve(filename);
@@ -150,6 +184,32 @@ public class ReceiptStorageService {
     return supabaseUrl + "/storage/v1/object/public/" + supabaseBucket + "/" + path;
   }
 
+  private String storeAzure(MultipartFile file, String filename) throws IOException {
+    String blobName = azurePrefix + filename;
+    String contentType = file.getContentType();
+    if (contentType == null || contentType.isBlank()) {
+      contentType = "image/jpeg";
+    }
+    byte[] bytes = file.getBytes();
+    BlobClient blobClient = azureContainerClient.getBlobClient(blobName);
+    BlobParallelUploadOptions options =
+        new BlobParallelUploadOptions(com.azure.core.util.BinaryData.fromBytes(bytes))
+            .setHeaders(new BlobHttpHeaders().setContentType(contentType));
+    blobClient.uploadWithResponse(options, Duration.ofMinutes(2), Context.NONE);
+    return blobClient.getBlobUrl();
+  }
+
+  private static String normalizeBlobPrefix(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return "";
+    }
+    String p = raw.strip().replace('\\', '/');
+    if (!p.endsWith("/")) {
+      p = p + "/";
+    }
+    return p;
+  }
+
   /**
    * Resolve a local filename to Path. Only valid for local storage or legacy local receipts.
    */
@@ -160,9 +220,11 @@ public class ReceiptStorageService {
     return uploadDir.resolve(filename);
   }
 
-  /** True if storage is remote (S3 or Supabase); resolve may not work for new receipts. */
+  /** True if storage is remote; resolve may not work for new receipts. */
   public boolean isRemote() {
-    return "s3".equals(storageProvider) || "supabase".equals(storageProvider);
+    return "s3".equals(storageProvider)
+        || "supabase".equals(storageProvider)
+        || "azure".equals(storageProvider);
   }
 
   private String buildS3Url(String key) {

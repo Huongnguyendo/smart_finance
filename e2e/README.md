@@ -19,6 +19,14 @@ cd app && npm run web
 cd e2e && npm install && npx playwright install && npm test
 ```
 
+### Screen smoke (`tests/screens.spec.ts`)
+
+Covers **splash**, **onboarding**, **auth**, then after **sign-up**: **home**, **transactions**, **add**, **insights**, **budgets**, **profile**, **receipt-upload**, **chat**, **goals**, and **transaction detail**.
+
+```bash
+cd e2e && npx playwright test tests/screens.spec.ts
+```
+
 ## Run in CI
 
 Set `CI=true` and ensure backend is available. The E2E runner will build and serve the frontend automatically. If port 8081 is already in use, Playwright will reuse the existing server.

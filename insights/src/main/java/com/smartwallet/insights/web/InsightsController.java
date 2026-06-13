@@ -3,6 +3,7 @@ package com.smartwallet.insights.web;
 import com.smartwallet.core.domain.Transaction;
 import com.smartwallet.core.domain.Budget;
 import com.smartwallet.insights.service.InsightsService;
+import com.smartwallet.insights.service.InsightsService.InsightCard;
 import com.smartwallet.insights.service.InsightsService.TransactionSummary;
 import com.smartwallet.insights.service.RecurringDetectionService;
 import com.smartwallet.transactions.service.BudgetService;
@@ -65,7 +66,8 @@ public class InsightsController {
         ))
         .toList();
     String text = insightsService.getOverviewInsights(user.getId(), transactions);
-    return new InsightsResponse(text);
+    List<InsightCard> cards = insightsService.getOverviewInsightCards(user.getId(), transactions);
+    return new InsightsResponse(text, cards);
   }
 
   @GetMapping("/dashboard")
@@ -119,14 +121,16 @@ public class InsightsController {
         .sum();
     double projectedNext30 = Math.round((total30 / 30) * 30 * 100) / 100.0;
 
-    String quickInsight = insightsService.getOverviewInsights(user.getId(),
-        transactionService.listForUser(user.getId()).stream().limit(10)
+    var quickInsightTransactions = transactionService.listForUser(user.getId()).stream().limit(10)
             .map(tx -> new TransactionSummary(
                 tx.getDescription() != null ? tx.getDescription() : "Transaction",
                 Math.abs(tx.getAmount().doubleValue()),
                 tx.getCategory() != null ? tx.getCategory().getName() : null
             ))
-            .toList());
+            .toList();
+
+    String quickInsight = insightsService.getOverviewInsights(user.getId(), quickInsightTransactions);
+    List<InsightCard> quickInsightCards = insightsService.getOverviewInsightCards(user.getId(), quickInsightTransactions);
 
     // Budget alerts: for each budget, compare spent vs limit (case-insensitive category match)
     Map<String, Double> byCategoryLower = byCategory.entrySet().stream()
@@ -155,6 +159,7 @@ public class InsightsController {
         recent,
         projectedNext30,
         quickInsight,
+        quickInsightCards,
         budgetAlerts
     );
   }
@@ -324,7 +329,11 @@ public class InsightsController {
 
   public record TransactionSuggestionsRequest(String description, double amount, String category) {}
   public record ChatRequest(String message, Long userId) {}
-  public record InsightsResponse(String text) {}
+  public record InsightsResponse(String text, List<InsightCard> cards) {
+    public InsightsResponse(String text) {
+      this(text, List.of());
+    }
+  }
   public record RecurringResponse(List<RecurringDetectionService.RecurringItem> items) {}
   public record ForecastPoint(int x, double y) {}
   public record ForecastResponse(List<ForecastPoint> chartData, double projectedNext30) {}
@@ -373,6 +382,7 @@ public class InsightsController {
       List<RecentTransaction> recentTransactions,
       double projectedNext30,
       String quickInsight,
+      List<InsightCard> quickInsightCards,
       List<BudgetAlert> budgetAlerts
   ) {}
 }

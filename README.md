@@ -1,6 +1,25 @@
 # SmartWallet AI
 
-Modern personal finance platform with AI features (Java 21, Spring Boot 3.3+, Expo React Native).
+Modern personal finance platform with a real Spring Boot backend, AI-powered financial insights, receipt upload/storage, and an Expo React Native web/mobile frontend.
+
+## Current Architecture
+
+```text
+Render Web App
+   ↓
+Azure Container Apps Backend
+   ↓              ↓              ↓
+Supabase       Azure Blob       Groq AI
+Postgres       Receipts         Insights
+```
+
+Local development still works with Docker Compose PostgreSQL, but the deployed project currently uses:
+
+- **Frontend:** Expo React Native Web, deployed on Render
+- **Backend:** Spring Boot API, containerized and deployed on Azure Container Apps
+- **Database:** Supabase PostgreSQL
+- **Receipt files:** Azure Blob Storage
+- **AI:** Groq for AI insights, with Hugging Face/Ollama fallback support
 
 ## Java Version
 
@@ -12,9 +31,24 @@ Modern personal finance platform with AI features (Java 21, Spring Boot 3.3+, Ex
 - `core`: domain entities (User, Transaction, Category)
 - `auth`: JWT auth + security config
 - `transactions`: CRUD + receipt upload + OCR
-- `insights`: placeholder for behavioral insights
-- `ml`: placeholder for categorization/forecasting
+- `insights`: analytics, forecast, recurring detection, AI insight cards, AI chat
+- `ml`: category suggestion support
 - `api-gateway`: Spring Boot app that wires everything
+
+## Key Features
+
+- JWT authentication and user-scoped finance data
+- Transaction CRUD, budgets, spending charts, and monthly dashboard
+- Structured AI insight cards:
+  - Spending Summary
+  - Budget Warning
+  - Unusual Activity
+  - Next Step
+- SmartWallet AI chat for questions about recent spending
+- Forecast panel based on recent spending pace
+- Recurring transaction detection
+- Receipt upload with OCR and remote storage support
+- Admin overview endpoint for aggregate app stats
 
 ## Local Development
 
@@ -75,23 +109,59 @@ Modern personal finance platform with AI features (Java 21, Spring Boot 3.3+, Ex
 - `DELETE /api/transactions/{id}`
 - `POST /api/transactions/upload-receipt` (multipart file upload)
 
-## Deployment (Render)
+## Deployment
 
-Deploy backend + frontend to [Render](https://render.com) (free tier):
+The current deployment is split across Render, Azure, and Supabase.
 
-1. **Push repo to GitHub**
+### Frontend: Render
 
-2. **Render Dashboard** → New → Blueprint → Connect your repo
+The Expo web app is deployed on Render as a static web service.
 
-3. **Add environment variables** in Render (for both services):
-   - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` (Supabase Postgres)
-   - `GROQ_API_KEY`, `HF_TOKEN` (AI insights)
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (receipt storage)
-   - For **smartwallet-web** only: `EXPO_PUBLIC_API_URL` = your backend URL (e.g. `https://smartwallet-api.onrender.com`)
+Set this frontend environment variable:
 
-4. **Deploy** – Render builds from `render.yaml`. Deploy backend first, then set `EXPO_PUBLIC_API_URL` on the frontend and redeploy.
+- `EXPO_PUBLIC_API_URL` = your Azure Container Apps backend URL
 
-5. **Production hardening:** Set `SPRING_PROFILES_ACTIVE=prod`, a strong `JWT_SECRET` (≥32 chars, not the default), and `CORS_ALLOWED_ORIGINS` to your real frontend URLs. See **[docs/PRODUCTION.md](docs/PRODUCTION.md)** for the full checklist (backups, observability, admin users, smoke tests).
+### Backend: Azure Container Apps
+
+The Spring Boot backend is built as a Docker image, pushed to Azure Container Registry, and deployed to Azure Container Apps.
+
+Important backend environment variables/secrets:
+
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` for Supabase PostgreSQL
+- `JWT_SECRET`
+- `GROQ_API_KEY` for AI insights
+- `HF_TOKEN` as optional fallback
+- `STORAGE_PROVIDER=azure`
+- `AZURE_STORAGE_CONNECTION_STRING`
+- `AZURE_STORAGE_CONTAINER=receipts`
+- `AZURE_STORAGE_BLOB_PREFIX=receipts/`
+- `CORS_ALLOWED_ORIGINS` = deployed frontend URL
+
+For Supabase transaction pooler, use a JDBC URL like:
+
+```text
+jdbc:postgresql://aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
+```
+
+The `prepareThreshold=0` part avoids PostgreSQL prepared-statement issues with transaction pooling.
+
+### Database: Supabase PostgreSQL
+
+Use Supabase for the hosted PostgreSQL database. The backend uses Spring Data JPA/Hibernate and updates schema with `ddl-auto=update` for this project.
+
+### Receipts: Azure Blob Storage
+
+Receipt images are stored in Azure Blob Storage when:
+
+```text
+STORAGE_PROVIDER=azure
+```
+
+The backend returns the blob URL for uploaded receipts. For public image preview, configure the container access appropriately, or keep it private and add signed/proxied downloads later.
+
+### Production Hardening
+
+Set `SPRING_PROFILES_ACTIVE=prod`, use a strong `JWT_SECRET`, lock down `CORS_ALLOWED_ORIGINS`, and review **[docs/PRODUCTION.md](docs/PRODUCTION.md)** for backups, observability, admin users, and smoke tests.
 
 ### Admin (app)
 
@@ -147,6 +217,12 @@ open target/site/surefire-report.html   # macOS; or open in a browser
 # Terminal 1: mvn -pl api-gateway -am spring-boot:run
 # Terminal 2: cd app && npm run web
 cd e2e && npm install && npx playwright install && npm test
+```
+
+Run the screen smoke test only:
+```bash
+cd e2e
+npx playwright test tests/screens.spec.ts --headed
 ```
 
 See `e2e/README.md` for E2E details and troubleshooting.
@@ -207,4 +283,5 @@ Metrics are scraped by Prometheus and visualized in Grafana.
   - `JWT_SECRET`
   - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`
   - `GROQ_API_KEY` or `HF_TOKEN` (free, for AI insights)
-  - `KAFKA_BOOTSTRAP`
+  - `AZURE_STORAGE_CONNECTION_STRING` when using Azure Blob receipts
+- Use `.env.example` as the template; do **not** commit real `.env` files.

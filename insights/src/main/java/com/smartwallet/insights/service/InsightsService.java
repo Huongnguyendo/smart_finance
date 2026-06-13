@@ -124,6 +124,9 @@ public class InsightsService {
   }
 
   public String getOverviewInsights(Long userId, List<TransactionSummary> transactions) {
+    if (transactions == null || transactions.isEmpty()) {
+      return "Add transactions to get personalized AI insights.";
+    }
     StringBuilder sb = new StringBuilder();
     double total = 0;
     for (TransactionSummary t : transactions) {
@@ -138,6 +141,138 @@ public class InsightsService {
         sb.toString()
     );
     return callLLM(prompt);
+  }
+
+  public List<InsightCard> getOverviewInsightCards(Long userId, List<TransactionSummary> transactions) {
+    if (transactions == null || transactions.isEmpty()) {
+      return List.of(
+          new InsightCard("Spending Summary", "No data yet", "Add a few transactions to unlock personalized spending patterns.", "neutral"),
+          new InsightCard("Budget Warning", "Waiting", "Set monthly or category budgets to get automatic risk alerts.", "neutral"),
+          new InsightCard("Unusual Activity", "None found", "There is not enough history yet to compare your spending behavior.", "neutral"),
+          new InsightCard("Next Step", "Start small", "Upload a receipt or add your latest purchase to make insights useful.", "positive")
+      );
+    }
+
+    StringBuilder txList = new StringBuilder();
+    double total = 0;
+    Map<String, Double> byCategory = new java.util.HashMap<>();
+    TransactionSummary largest = null;
+    for (TransactionSummary t : transactions) {
+      double amount = Math.abs(t.amount());
+      String category = t.category() != null && !t.category().isBlank() ? t.category() : "Other";
+      txList.append(String.format("- %s: $%.2f (%s)\n", t.description(), amount, category));
+      total += amount;
+      byCategory.merge(category, amount, Double::sum);
+      if (largest == null || amount > Math.abs(largest.amount())) {
+        largest = t;
+      }
+    }
+
+    String topCategory = byCategory.entrySet().stream()
+        .max(Map.Entry.comparingByValue())
+        .map(Map.Entry::getKey)
+        .orElse("Other");
+    double topAmount = byCategory.getOrDefault(topCategory, 0.0);
+
+    String prompt = String.format(
+        "Recent transactions total $%.2f. Top category: %s $%.2f. Transactions:\n%s\n"
+            + "Return ONLY valid JSON as an array of exactly 4 objects. "
+            + "Objects must have keys: title, label, body, tone. "
+            + "Use these titles exactly: Spending Summary, Budget Warning, Unusual Activity, Next Step. "
+            + "Tone must be one of: neutral, positive, warning, danger. "
+            + "Body must be one short useful sentence based only on the listed data. Do not speculate.",
+        total,
+        topCategory,
+        topAmount,
+        txList
+    );
+
+    String raw = callLLM(prompt);
+    List<InsightCard> aiCards = parseInsightCards(raw);
+    return aiCards.isEmpty() ? fallbackInsightCards(transactions, total, topCategory, topAmount, largest) : aiCards;
+  }
+
+  private List<InsightCard> parseInsightCards(String raw) {
+    if (raw == null || raw.isBlank() || raw.equals(NO_AI_MSG)) {
+      return List.of();
+    }
+    try {
+      String json = raw.trim();
+      int start = json.indexOf('[');
+      int end = json.lastIndexOf(']');
+      if (start >= 0 && end > start) {
+        json = json.substring(start, end + 1);
+      }
+      JsonNode root = objectMapper.readTree(json);
+      if (!root.isArray()) {
+        return List.of();
+      }
+      List<InsightCard> cards = new java.util.ArrayList<>();
+      for (JsonNode node : root) {
+        String title = node.path("title").asText("").trim();
+        String label = node.path("label").asText("").trim();
+        String body = node.path("body").asText("").trim();
+        String tone = normalizeTone(node.path("tone").asText("neutral"));
+        if (!title.isEmpty() && !body.isEmpty()) {
+          cards.add(new InsightCard(title, label.isEmpty() ? "Insight" : label, body, tone));
+        }
+      }
+      return cards.size() == 4 ? cards : List.of();
+    } catch (Exception e) {
+      log.debug("Could not parse structured insight cards: {}", e.getMessage());
+      return List.of();
+    }
+  }
+
+  private List<InsightCard> fallbackInsightCards(
+      List<TransactionSummary> transactions,
+      double total,
+      String topCategory,
+      double topAmount,
+      TransactionSummary largest) {
+    double avg = transactions.isEmpty() ? 0 : total / transactions.size();
+    String largestDescription = largest != null ? largest.description() : "your largest transaction";
+    double largestAmount = largest != null ? Math.abs(largest.amount()) : 0;
+    String budgetTone = topAmount >= total * 0.6 ? "warning" : "neutral";
+    String unusualTone = largestAmount > avg * 2 && transactions.size() >= 3 ? "warning" : "neutral";
+
+    return List.of(
+        new InsightCard(
+            "Spending Summary",
+            String.format("$%.2f tracked", round(total)),
+            String.format("%s is your biggest category at $%.2f.", topCategory, round(topAmount)),
+            "neutral"),
+        new InsightCard(
+            "Budget Warning",
+            topAmount >= total * 0.6 ? "Concentrated" : "On watch",
+            topAmount >= total * 0.6
+                ? String.format("%s makes up most of this recent spending.", topCategory)
+                : "No single category dominates your recent spending.",
+            budgetTone),
+        new InsightCard(
+            "Unusual Activity",
+            largestAmount > avg * 2 && transactions.size() >= 3 ? "Large item" : "Normal range",
+            largestAmount > avg * 2 && transactions.size() >= 3
+                ? String.format("%s at $%.2f is much higher than your average transaction.", largestDescription, round(largestAmount))
+                : "Recent transactions look fairly even so far.",
+            unusualTone),
+        new InsightCard(
+            "Next Step",
+            "Action",
+            String.format("Review %s first if you want the fastest spending improvement.", topCategory),
+            "positive")
+    );
+  }
+
+  private static double round(double value) {
+    return Math.round(value * 100) / 100.0;
+  }
+
+  private static String normalizeTone(String tone) {
+    return switch (tone == null ? "" : tone.trim().toLowerCase()) {
+      case "positive", "warning", "danger" -> tone.trim().toLowerCase();
+      default -> "neutral";
+    };
   }
 
   private String callLLM(String userMessage) {
@@ -237,4 +372,5 @@ public class InsightsService {
   }
 
   public record TransactionSummary(String description, double amount, String category) {}
+  public record InsightCard(String title, String label, String body, String tone) {}
 }
