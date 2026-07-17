@@ -23,6 +23,9 @@ class ReceiptStorageServiceTest {
         "",
         "",
         "receipts",
+        "",
+        "",
+        "receipts",
         ""
     );
 
@@ -39,7 +42,7 @@ class ReceiptStorageServiceTest {
   }
 
   @Test
-  void rejectsRemovedAzureProviderAtStartup() {
+  void azureProviderRequiresConnectionString() {
     assertThatThrownBy(() -> new ReceiptStorageService(
         "azure",
         "uploads/receipts",
@@ -49,8 +52,11 @@ class ReceiptStorageServiceTest {
         "",
         "",
         "receipts",
+        "",
+        "",
+        "receipts",
         ""))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Unsupported STORAGE_PROVIDER='azure'");
+        .hasMessageContaining("AZURE_STORAGE_CONNECTION_STRING");
   }
 }

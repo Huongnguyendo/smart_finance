@@ -9,7 +9,7 @@ Use this before pointing real users or sensitive data at the stack.
 | `JWT_SECRET` | **Required in production.** At least 32 random bytes/characters. Never commit or reuse dev values. |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Use your managed Postgres (e.g. Supabase) with TLS (`sslmode=require`). |
 | `GROQ_API_KEY` / `HF_TOKEN` | AI features; optional if you disable insights. |
-| `SUPABASE_*` | If `STORAGE_PROVIDER=supabase`, set URL, service role key, bucket. |
+| `AZURE_STORAGE_*` | If `STORAGE_PROVIDER=azure`, set the connection string and container. |
 | `RABBITMQ_*` or `RABBITMQ_URI` | Message broker for async work. |
 
 - Keep secrets in the host’s secret store (Render env, AWS Secrets Manager, etc.), not in the repo.
@@ -41,7 +41,7 @@ Wildcards are supported via Spring’s origin patterns (see `application.yml`). 
 
 - Enable **automated backups** on your Postgres provider (Supabase/ RDS / etc.).
 - Document **restore** steps in your runbook.
-- Receipt files in Supabase Storage: enable bucket policies and periodic backup/export if required for compliance.
+- Receipt files in Azure Blob Storage: configure redundancy and periodic backup/export if required for compliance.
 
 ## 5. Observability
 
@@ -81,19 +81,17 @@ Consider restricting Swagger in production (reverse proxy auth or disable spring
 
 ### Tracing receipt-upload failures
 
-1. In Render, open **smartwallet-api → Logs** and search for
-   `Receipt storage initialized`. It must show `provider=supabase` and the expected
-   Supabase host and bucket. If an upload still mentions Azure, the frontend is
-   calling a different backend or Render has not deployed the current commit.
-2. Reproduce the upload and copy the `Reference` from the API response. On Render,
-   this is the platform's `Rndr-Id`; locally it is a generated UUID. Search Render
-   logs for that reference, then follow the nearby `uploadId` entry.
-3. A failed Supabase response logs its HTTP status, Supabase request ID, and an
-   abbreviated response body. In the Supabase dashboard, inspect **Logs → Storage**
-   for the same time/request. Also verify **Storage → receipts** exists and is public
-   if the returned public URL must load directly.
-4. Never log or paste `SUPABASE_SERVICE_ROLE_KEY`. Rotate it immediately if it is
-   exposed. The application logs only the project host and bucket, not the key.
+1. In Azure Container Apps, open **smartfinance-api → Log stream** and search for
+   `Receipt storage initialized`. It must show `provider=azure` and the expected
+   Azure Storage host and container.
+2. Reproduce the upload and copy the `Reference` from the API response, then search
+   the Container App logs for that reference and the nearby `uploadId` entry.
+3. A failed Azure response logs its HTTP status, Azure error code, `x-ms-request-id`,
+   and an abbreviated service response. Use that request ID and UTC timestamp in
+   Azure support or Storage diagnostics if the account rejects the request.
+4. Never log or paste `AZURE_STORAGE_CONNECTION_STRING`. Rotate the Storage Account
+   keys immediately if it is exposed. The application logs only the host and
+   container, not the connection string.
 
 ## 10. Mobile / Expo web
 

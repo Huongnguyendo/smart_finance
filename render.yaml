@@ -3,11 +3,11 @@
 #
 # 1. Push this repo to GitHub
 # 2. In Render: New > Blueprint > Connect repo
-# 3. Add env vars in Render dashboard (DB_*, SUPABASE_*, GROQ_API_KEY, HF_TOKEN)
+# 3. Add env vars in Render dashboard (DB_*, AZURE_STORAGE_*, GROQ_API_KEY, HF_TOKEN)
 # 4. After backend deploys, add EXPO_PUBLIC_API_URL=https://smartwallet-api.onrender.com to frontend, then redeploy
 
 services:
-  # Backend (Java Spring Boot)
+  # Optional fallback backend (the active production API is Azure Container Apps)
   - type: web
     name: smartwallet-api
     runtime: docker
@@ -35,13 +35,13 @@ services:
       - key: HF_TOKEN
         sync: false
       - key: STORAGE_PROVIDER
-        value: supabase
-      - key: SUPABASE_URL
+        value: azure
+      - key: AZURE_STORAGE_CONNECTION_STRING
         sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_STORAGE_BUCKET
+      - key: AZURE_STORAGE_CONTAINER
         value: receipts
+      - key: AZURE_STORAGE_BLOB_PREFIX
+        value: receipts/
 
   # Frontend (Expo web static)
   - type: web
@@ -51,4 +51,4 @@ services:
     staticPublishPath: ./app/dist
     envVars:
       - key: EXPO_PUBLIC_API_URL
-        sync: false
+        value: https://smartfinance-api.wittyglacier-7789888f.eastus2.azurecontainerapps.io
