@@ -15,6 +15,20 @@ function buildUrl(path: string): string {
   return `${base}${p}`;
 }
 
+export async function getApiErrorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  let message = text || response.statusText || `Request failed (${response.status})`;
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    if (typeof parsed.error === 'string' && parsed.error.length > 0) {
+      message = parsed.error;
+    }
+  } catch {
+    /* use raw text */
+  }
+  return message;
+}
+
 export async function apiJson<T>(
   path: string,
   options: RequestInit = {}
@@ -22,17 +36,7 @@ export async function apiJson<T>(
   const url = buildUrl(path);
   const response = await fetch(url, options);
   if (!response.ok) {
-    const text = await response.text();
-    let message = text || response.statusText;
-    try {
-      const parsed = JSON.parse(text) as { error?: unknown };
-      if (typeof parsed.error === 'string' && parsed.error.length > 0) {
-        message = parsed.error;
-      }
-    } catch {
-      /* use raw text */
-    }
-    throw new Error(message);
+    throw new Error(await getApiErrorMessage(response));
   }
   const text = await response.text();
   if (!text || text.trim() === '') {
@@ -74,16 +78,6 @@ export async function apiAuth(
   }
   const response = await fetch(buildUrl(path), { ...options, headers });
   if (!response.ok) {
-    const text = await response.text();
-    let message = text || response.statusText;
-    try {
-      const parsed = JSON.parse(text) as { error?: unknown };
-      if (typeof parsed.error === 'string' && parsed.error.length > 0) {
-        message = parsed.error;
-      }
-    } catch {
-      /* use raw text */
-    }
-    throw new Error(message);
+    throw new Error(await getApiErrorMessage(response));
   }
 }

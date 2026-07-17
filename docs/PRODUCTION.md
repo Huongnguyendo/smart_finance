@@ -79,6 +79,22 @@ Consider restricting Swagger in production (reverse proxy auth or disable spring
 3. `GET /api/transactions` with Bearer token → 200  
 4. (Optional) Admin user → `GET /api/admin/overview` → 200  
 
+### Tracing receipt-upload failures
+
+1. In Render, open **smartwallet-api → Logs** and search for
+   `Receipt storage initialized`. It must show `provider=supabase` and the expected
+   Supabase host and bucket. If an upload still mentions Azure, the frontend is
+   calling a different backend or Render has not deployed the current commit.
+2. Reproduce the upload and copy the `Reference` from the API response. On Render,
+   this is the platform's `Rndr-Id`; locally it is a generated UUID. Search Render
+   logs for that reference, then follow the nearby `uploadId` entry.
+3. A failed Supabase response logs its HTTP status, Supabase request ID, and an
+   abbreviated response body. In the Supabase dashboard, inspect **Logs → Storage**
+   for the same time/request. Also verify **Storage → receipts** exists and is public
+   if the returned public URL must load directly.
+4. Never log or paste `SUPABASE_SERVICE_ROLE_KEY`. Rotate it immediately if it is
+   exposed. The application logs only the project host and bucket, not the key.
+
 ## 10. Mobile / Expo web
 
 - Set **`EXPO_PUBLIC_API_URL`** to the public HTTPS API URL.

@@ -7,18 +7,18 @@ Modern personal finance platform with a real Spring Boot backend, AI-powered fin
 ```text
 Render Web App
    ↓
-Azure Container Apps Backend
+Render Spring Boot API
    ↓              ↓              ↓
-Supabase       Azure Blob       Groq AI
-Postgres       Receipts         Insights
+Supabase       Supabase         Groq AI
+Postgres       Storage          Insights
 ```
 
 Local development still works with Docker Compose PostgreSQL, but the deployed project currently uses:
 
 - **Frontend:** Expo React Native Web, deployed on Render
-- **Backend:** Spring Boot API, containerized and deployed on Azure Container Apps
+- **Backend:** Spring Boot API, containerized and deployed on Render
 - **Database:** Supabase PostgreSQL
-- **Receipt files:** Azure Blob Storage
+- **Receipt files:** Supabase Storage
 - **AI:** Groq for AI insights, with Hugging Face/Ollama fallback support
 
 ## Java Version
@@ -111,7 +111,7 @@ Local development still works with Docker Compose PostgreSQL, but the deployed p
 
 ## Deployment
 
-The current deployment is split across Render, Azure, and Supabase.
+The current deployment uses Render for the app/API and Supabase for data/storage.
 
 ### Frontend: Render
 
@@ -119,11 +119,11 @@ The Expo web app is deployed on Render as a static web service.
 
 Set this frontend environment variable:
 
-- `EXPO_PUBLIC_API_URL` = your Azure Container Apps backend URL
+- `EXPO_PUBLIC_API_URL` = your Render backend URL (for example, `https://smartwallet-api.onrender.com`)
 
-### Backend: Azure Container Apps
+### Backend: Render
 
-The Spring Boot backend is built as a Docker image, pushed to Azure Container Registry, and deployed to Azure Container Apps.
+The Spring Boot backend is built from the root `Dockerfile` by the `smartwallet-api` service in `render.yaml`.
 
 Important backend environment variables/secrets:
 
@@ -131,10 +131,10 @@ Important backend environment variables/secrets:
 - `JWT_SECRET`
 - `GROQ_API_KEY` for AI insights
 - `HF_TOKEN` as optional fallback
-- `STORAGE_PROVIDER=azure`
-- `AZURE_STORAGE_CONNECTION_STRING`
-- `AZURE_STORAGE_CONTAINER=receipts`
-- `AZURE_STORAGE_BLOB_PREFIX=receipts/`
+- `STORAGE_PROVIDER=supabase`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_STORAGE_BUCKET=receipts`
 - `CORS_ALLOWED_ORIGINS` = deployed frontend URL
 
 For Supabase transaction pooler, use a JDBC URL like:
@@ -149,15 +149,15 @@ The `prepareThreshold=0` part avoids PostgreSQL prepared-statement issues with t
 
 Use Supabase for the hosted PostgreSQL database. The backend uses Spring Data JPA/Hibernate and updates schema with `ddl-auto=update` for this project.
 
-### Receipts: Azure Blob Storage
+### Receipts: Supabase Storage
 
-Receipt images are stored in Azure Blob Storage when:
+Receipt images are stored in Supabase Storage when:
 
 ```text
-STORAGE_PROVIDER=azure
+STORAGE_PROVIDER=supabase
 ```
 
-The backend returns the blob URL for uploaded receipts. For public image preview, configure the container access appropriately, or keep it private and add signed/proxied downloads later.
+The backend uploads with the service-role key and returns the public object URL. Create the configured bucket and make it public if the app should display that URL directly.
 
 ### Production Hardening
 
@@ -283,5 +283,5 @@ Metrics are scraped by Prometheus and visualized in Grafana.
   - `JWT_SECRET`
   - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`
   - `GROQ_API_KEY` or `HF_TOKEN` (free, for AI insights)
-  - `AZURE_STORAGE_CONNECTION_STRING` when using Azure Blob receipts
+  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET` for receipts
 - Use `.env.example` as the template; do **not** commit real `.env` files.

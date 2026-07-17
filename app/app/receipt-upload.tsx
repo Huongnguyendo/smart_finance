@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, TextInput } from 'react-native';
 
-import { getApiUrl } from '../src/lib/api';
+import { getApiErrorMessage, getApiUrl } from '../src/lib/api';
 import { getItem } from '../src/lib/storage';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { SectionCard } from '../src/components/SectionCard';
@@ -61,8 +61,7 @@ export default function ReceiptUpload() {
       body: formData,
     });
     if (!response.ok) {
-      const text = await response.text();
-      setStatus(`Upload failed: ${text}`);
+      setStatus(`Upload failed: ${await getApiErrorMessage(response)}`);
       return;
     }
     const data = (await response.json()) as ReceiptParseResponse;

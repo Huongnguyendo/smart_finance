@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -166,6 +167,7 @@ public class TransactionController {
   @PostMapping(value = "/upload-receipt", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ReceiptParseResponse uploadReceipt(
       @AuthenticationPrincipal User user,
+      @RequestHeader(value = "Rndr-Id", required = false) String renderRequestId,
       @RequestPart("file") MultipartFile file) {
     if (file == null || file.isEmpty()) {
       throw new ResponseStatusException(
@@ -177,9 +179,13 @@ public class TransactionController {
     try {
       receiptUrl = receiptStorageService.store(file);
     } catch (IOException e) {
+      String errorId = renderRequestId != null && !renderRequestId.isBlank()
+          ? renderRequestId
+          : java.util.UUID.randomUUID().toString();
+      log.error("Receipt storage error: errorId={} userId={}", errorId, user.getId(), e);
       throw new ResponseStatusException(
           org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
-          "Failed to store receipt image");
+          "Failed to store receipt image. Reference: " + errorId);
     }
     log.info("OCR receipt: textLen={} amount={}", result.getRawText() != null ? result.getRawText().length() : 0, result.getAmount());
     return new ReceiptParseResponse(result.getRawText(), result.getAmount(), receiptUrl, result.getMerchant());

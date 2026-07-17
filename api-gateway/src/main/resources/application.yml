@@ -17,11 +17,6 @@ smartwallet:
       service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
       bucket: ${SUPABASE_STORAGE_BUCKET:receipts}
       prefix: ${SUPABASE_STORAGE_PREFIX:}
-    azure:
-      connection-string: ${AZURE_STORAGE_CONNECTION_STRING:}
-      container: ${AZURE_STORAGE_CONTAINER:receipts}
-      prefix: ${AZURE_STORAGE_BLOB_PREFIX:receipts/}
-
 spring:
   application:
     name: smartwallet-ai

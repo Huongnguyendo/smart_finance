@@ -1,11 +1,5 @@
 package com.smartwallet.transactions.service;
 
-// import com.azure.core.util.Context;
-// import com.azure.storage.blob.BlobClient;
-// import com.azure.storage.blob.BlobContainerClient;
-// import com.azure.storage.blob.BlobServiceClientBuilder;
-// import com.azure.storage.blob.models.BlobHttpHeaders;
-// import com.azure.storage.blob.options.BlobParallelUploadOptions;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -14,6 +8,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +24,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 public class ReceiptStorageService {
 
   private static final Logger log = LoggerFactory.getLogger(ReceiptStorageService.class);
+  private static final Set<String> SUPPORTED_PROVIDERS = Set.of("local", "s3", "supabase");
 
   private final String storageProvider;
   private final Path uploadDir;
@@ -40,8 +36,6 @@ public class ReceiptStorageService {
   private final String supabaseServiceRoleKey;
   private final String supabaseBucket;
   private final String supabasePrefix;
-  // private final BlobContainerClient azureContainerClient;
-  // private final String azurePrefix;
 
   public ReceiptStorageService(
       @Value("${smartwallet.receipts.storage-provider:local}") String storageProvider,
@@ -62,10 +56,12 @@ public class ReceiptStorageService {
     this.supabaseServiceRoleKey = supabaseServiceRoleKey != null ? supabaseServiceRoleKey.strip() : "";
     this.supabaseBucket = supabaseBucket != null ? supabaseBucket.strip() : "receipts";
     this.supabasePrefix = supabasePrefix != null ? supabasePrefix.strip() : "";
-    // String azureConn = azureConnectionString != null ? azureConnectionString.strip() : "";
-    // String azureCont = azureContainer != null ? azureContainer.strip() : "";
-    // this.azurePrefix = normalizeBlobPrefix(azurePrefixRaw);
 
+    if (!SUPPORTED_PROVIDERS.contains(this.storageProvider)) {
+      throw new IllegalStateException(
+          "Unsupported STORAGE_PROVIDER='" + this.storageProvider
+              + "'. Supported values: local, s3, supabase");
+    }
     if ("s3".equals(this.storageProvider) && this.s3Bucket.isEmpty()) {
       throw new IllegalStateException(
           "STORAGE_PROVIDER=s3 requires AWS_S3_BUCKET to be set");
@@ -76,13 +72,6 @@ public class ReceiptStorageService {
             "STORAGE_PROVIDER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to be set");
       }
     }
-    // if ("azure".equals(this.storageProvider)) {
-    //   if (azureConn.isEmpty() || azureCont.isEmpty()) {
-    //     throw new IllegalStateException(
-    //         "STORAGE_PROVIDER=azure requires AZURE_STORAGE_CONNECTION_STRING and AZURE_STORAGE_CONTAINER");
-    //   }
-    // }
-
     S3Client client = null;
     if ("s3".equals(this.storageProvider)) {
       client = S3Client.builder()
@@ -90,15 +79,6 @@ public class ReceiptStorageService {
           .build();
     }
     this.s3Client = client;
-
-    // if ("azure".equals(this.storageProvider)) {
-    //   this.azureContainerClient = new BlobServiceClientBuilder()
-    //       .connectionString(azureConn)
-    //       .buildClient()
-    //       .getBlobContainerClient(azureCont);
-    // } else {
-    //   this.azureContainerClient = null;
-    // }
 
     if ("local".equals(this.storageProvider)) {
       try {
@@ -108,46 +88,75 @@ public class ReceiptStorageService {
             "Could not create receipt upload directory: " + uploadDir, e);
       }
     }
+
+    log.info(
+        "Receipt storage initialized: provider={} destination={}",
+        this.storageProvider,
+        storageDestination());
   }
 
   /**
    * Saves the receipt image and returns the URL.
    * - Local: /api/transactions/receipts/{filename}
    * - S3: https://{bucket}.s3.{region}.amazonaws.com/{prefix}{filename}
-   * - Azure: blob public URL (container should allow blob-level anonymous read for app previews)
    * - Supabase: https://{ref}.supabase.co/storage/v1/object/public/{bucket}/{path}
    */
   public String store(MultipartFile file) throws IOException {
     String ext = getExtension(file.getOriginalFilename());
     String filename = UUID.randomUUID() + ext;
+    String uploadId = UUID.randomUUID().toString();
+    long startedAt = System.nanoTime();
 
-    if ("s3".equals(storageProvider)) {
-      String key = s3Prefix + filename;
-      String contentType = file.getContentType();
-      if (contentType == null || contentType.isBlank()) {
-        contentType = "image/jpeg";
+    log.info(
+        "Receipt upload started: uploadId={} provider={} filename={} contentType={} sizeBytes={}",
+        uploadId,
+        storageProvider,
+        filename,
+        file.getContentType(),
+        file.getSize());
+
+    try {
+      String url;
+      if ("s3".equals(storageProvider)) {
+        String key = s3Prefix + filename;
+        String contentType = file.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+          contentType = "image/jpeg";
+        }
+        PutObjectRequest req = PutObjectRequest.builder()
+            .bucket(s3Bucket)
+            .key(key)
+            .contentType(contentType)
+            .build();
+        s3Client.putObject(req, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+        url = buildS3Url(key);
+      } else if ("supabase".equals(storageProvider)) {
+        url = storeSupabase(file, filename, uploadId);
+      } else {
+        url = storeLocally(file, filename);
       }
-      PutObjectRequest req = PutObjectRequest.builder()
-          .bucket(s3Bucket)
-          .key(key)
-          .contentType(contentType)
-          .build();
-      s3Client.putObject(req, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-      return buildS3Url(key);
+
+      log.info(
+          "Receipt upload succeeded: uploadId={} provider={} filename={} durationMs={}",
+          uploadId,
+          storageProvider,
+          filename,
+          Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
+      return url;
+    } catch (Exception e) {
+      log.error(
+          "Receipt upload failed: uploadId={} provider={} destination={} filename={} durationMs={}",
+          uploadId,
+          storageProvider,
+          storageDestination(),
+          filename,
+          Duration.ofNanos(System.nanoTime() - startedAt).toMillis(),
+          e);
+      if (e instanceof IOException ioException) {
+        throw ioException;
+      }
+      throw new IOException("Receipt upload failed; uploadId=" + uploadId, e);
     }
-
-    if ("supabase".equals(storageProvider)) {
-      System.out.println("Storing receipt in Supabase: " + filename);
-      return storeSupabase(file, filename);
-    }
-
-    // Azure storage is disabled for now; keep receipts on local storage.
-    // if ("azure".equals(storageProvider)) {
-    //   log.warn("Azure storage is disabled; saving receipt locally instead for {}", filename);
-    //   return storeLocally(file, filename);
-    // }
-
-    return storeLocally(file, filename);
   }
 
   private String storeLocally(MultipartFile file, String filename) throws IOException {
@@ -157,7 +166,7 @@ public class ReceiptStorageService {
     return "/api/transactions/receipts/" + filename;
   }
 
-  private String storeSupabase(MultipartFile file, String filename) throws IOException {
+  private String storeSupabase(MultipartFile file, String filename, String uploadId) throws IOException {
     String path = supabasePrefix.isEmpty() ? filename : supabasePrefix + "/" + filename;
     String url = supabaseUrl + "/storage/v1/object/" + supabaseBucket + "/" + path;
 
@@ -183,7 +192,14 @@ public class ReceiptStorageService {
           .build();
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() >= 400) {
-        throw new IOException("Supabase upload failed: " + response.statusCode() + " " + response.body());
+        String requestId = response.headers().firstValue("x-request-id")
+            .or(() -> response.headers().firstValue("sb-request-id"))
+            .orElse("unavailable");
+        throw new IOException(
+            "Supabase upload failed: uploadId=" + uploadId
+                + ", status=" + response.statusCode()
+                + ", requestId=" + requestId
+                + ", response=" + abbreviate(response.body(), 500));
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -192,32 +208,6 @@ public class ReceiptStorageService {
 
     return supabaseUrl + "/storage/v1/object/public/" + supabaseBucket + "/" + path;
   }
-
-  // private String storeAzure(MultipartFile file, String filename) throws IOException {
-  //   String blobName = azurePrefix + filename;
-  //   String contentType = file.getContentType();
-  //   if (contentType == null || contentType.isBlank()) {
-  //     contentType = "image/jpeg";
-  //   }
-  //   byte[] bytes = file.getBytes();
-  //   BlobClient blobClient = azureContainerClient.getBlobClient(blobName);
-  //   BlobParallelUploadOptions options =
-  //       new BlobParallelUploadOptions(com.azure.core.util.BinaryData.fromBytes(bytes))
-  //           .setHeaders(new BlobHttpHeaders().setContentType(contentType));
-  //   blobClient.uploadWithResponse(options, Duration.ofMinutes(2), Context.NONE);
-  //   return blobClient.getBlobUrl();
-  // }
-
-  // private static String normalizeBlobPrefix(String raw) {
-  //   if (raw == null || raw.isBlank()) {
-  //     return "";
-  //   }
-  //   String p = raw.strip().replace('\\', '/');
-  //   if (!p.endsWith("/")) {
-  //     p = p + "/";
-  //   }
-  //   return p;
-  // }
 
   /**
    * Resolve a local filename to Path. Only valid for local storage or legacy local receipts.
@@ -238,6 +228,24 @@ public class ReceiptStorageService {
   private String buildS3Url(String key) {
     return String.format("https://%s.s3.%s.amazonaws.com/%s",
         s3Bucket, s3Region, key);
+  }
+
+  private String storageDestination() {
+    return switch (storageProvider) {
+      case "s3" -> "bucket=" + s3Bucket + ", region=" + s3Region;
+      case "supabase" -> "host=" + URI.create(supabaseUrl).getHost() + ", bucket=" + supabaseBucket;
+      default -> "directory=" + uploadDir;
+    };
+  }
+
+  private static String abbreviate(String value, int maxLength) {
+    if (value == null) {
+      return "";
+    }
+    String singleLine = value.replaceAll("[\\r\\n]+", " ");
+    return singleLine.length() <= maxLength
+        ? singleLine
+        : singleLine.substring(0, maxLength) + "...";
   }
 
   private static String getExtension(String originalFilename) {
