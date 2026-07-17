@@ -6,7 +6,7 @@ server:
 
 smartwallet:
   receipts:
-    storage-provider: ${STORAGE_PROVIDER:local}
+    storage-provider: ${STORAGE_PROVIDER:supabase}
     upload-dir: ${SMARTWALLET_RECEIPTS_UPLOAD_DIR:uploads/receipts}
     s3:
       bucket: ${AWS_S3_BUCKET:}

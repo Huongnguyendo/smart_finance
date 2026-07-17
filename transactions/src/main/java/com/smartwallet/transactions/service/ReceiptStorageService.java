@@ -15,6 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,6 +27,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @Service
 public class ReceiptStorageService {
+
+  private static final Logger log = LoggerFactory.getLogger(ReceiptStorageService.class);
 
   private final String storageProvider;
   private final Path uploadDir;
@@ -140,9 +144,20 @@ public class ReceiptStorageService {
     }
 
     if ("azure".equals(storageProvider)) {
-      return storeAzure(file, filename);
+      try {
+        return storeAzure(file, filename);
+      } catch (IOException e) {
+        log.warn("Azure blob upload failed, falling back to local storage for {}. {}",
+            filename, e.getMessage());
+        return storeLocally(file, filename);
+      }
     }
 
+    return storeLocally(file, filename);
+  }
+
+  private String storeLocally(MultipartFile file, String filename) throws IOException {
+    Files.createDirectories(uploadDir);
     Path target = uploadDir.resolve(filename);
     file.transferTo(target.toFile());
     return "/api/transactions/receipts/" + filename;
