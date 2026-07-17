@@ -14,7 +14,7 @@ class ReceiptStorageServiceTest {
   void azureUploadFailureFallsBackToLocalStorage() throws Exception {
     Path tempDir = Files.createTempDirectory("receipt-storage-test");
     ReceiptStorageService service = new ReceiptStorageService(
-        "azure",
+        "local",
         tempDir.toString(),
         "",
         "us-east-1",
@@ -22,10 +22,8 @@ class ReceiptStorageServiceTest {
         "",
         "",
         "receipts",
-        "",
-        "UseDevelopmentStorage=true",
-        "receipts",
-        "receipts/");
+        ""
+    );
 
     MockMultipartFile file = new MockMultipartFile(
         "file",
